@@ -24,7 +24,7 @@ use Illuminate\Support\ServiceProvider;
  */
 class WorkerlessServiceProvider extends ServiceProvider
 {
-    public const VERSION = '1.0.0';
+    public const VERSION = '1.1.0';
 
     /** Documentation and source, linked from the dashboard. */
     public const REPOSITORY = 'https://github.com/himacode-company/workerless';
