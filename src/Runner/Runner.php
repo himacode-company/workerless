@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HimaCode\Workerless\Runner;
 
 use HimaCode\Workerless\History\Recorder;
+use HimaCode\Workerless\Loopback\Trigger;
 use HimaCode\Workerless\Support\Installer;
 use HimaCode\Workerless\Support\State;
 use Illuminate\Contracts\Config\Repository as Config;
@@ -72,6 +73,25 @@ class Runner
         $bufferLevel = ob_get_level();
         ob_start(); // nothing a job prints may reach the client
         $chain = false;
+        $finished = false;
+
+        // If PHP dies in the middle of this run (fatal error, out of memory,
+        // time limit), "finally" below never runs. This still does: free the
+        // lock and pass the baton, so the remaining jobs never wait for a visitor.
+        register_shutdown_function(function () use (&$finished, $lock): void {
+            if ($finished) {
+                return;
+            }
+
+            $finished = true;
+            $this->state->unlock($lock);
+
+            try {
+                $this->app->make(Trigger::class)->fire();
+            } catch (Throwable) {
+                // Nothing more can be done in a dying process.
+            }
+        });
 
         try {
             $this->state->write('last-run', time());
@@ -87,7 +107,7 @@ class Runner
             $this->refreshNextDue();
             $this->recorder->prune();
 
-            $chain = $this->secondsUntilReady() <= $this->maxWait();
+            $chain = $this->secondsUntilReady() <= $this->horizon();
         } catch (Throwable $e) {
             $this->recoverMissingTables();
             $this->report($e);
@@ -96,7 +116,10 @@ class Runner
                 ob_end_clean();
             }
 
-            $this->state->unlock($lock);
+            if (! $finished) {
+                $finished = true;
+                $this->state->unlock($lock);
+            }
         }
 
         return $chain;
@@ -123,6 +146,27 @@ class Runner
         }
 
         return max(0, min(300, (int) $this->config->get('workerless.loopback.max_wait', 30)));
+    }
+
+    /**
+     * How far ahead the self-call chain keeps itself alive (-1 = disabled).
+     * Work due within this many seconds is reached in hops of max_wait,
+     * e.g. a retry with a 60 s backoff runs on time even with no visitors.
+     */
+    public function horizon(): int
+    {
+        $maxWait = $this->maxWait();
+
+        if ($maxWait < 0) {
+            return -1;
+        }
+
+        // Hopping needs a real wait per hop, or it would spin.
+        if ($maxWait < 5) {
+            return $maxWait;
+        }
+
+        return max($maxWait, min(900, (int) $this->config->get('workerless.loopback.horizon', 300)));
     }
 
     /**

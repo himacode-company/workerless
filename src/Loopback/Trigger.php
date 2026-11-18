@@ -29,30 +29,44 @@ class Trigger
     ) {
     }
 
-    public function fire(): void
+    /** Sends the self-call. True when it reached the server. */
+    public function fire(): bool
     {
         if (! $this->config->get('workerless.enabled', true)
             || ! $this->config->get('workerless.loopback.enabled', true)
             || ! function_exists('curl_init')) {
-            return;
+            return false;
         }
 
         $target = $this->target();
-        $headers = $this->signer->headers();
 
-        if ($target === null || $headers === null) {
-            return;
+        if ($target === null) {
+            return false;
         }
 
-        // 127.0.0.1 first (fast, skips CDNs and firewalls), then the public address.
-        // Each attempt needs fresh headers: a signature is accepted only once.
-        if (! $this->send($target, $headers, true)) {
-            $headers = $this->signer->headers();
+        // Two rounds, one second apart, so a brief network hiccup cannot
+        // break the chain. Each round: 127.0.0.1 first (fast, skips CDNs and
+        // firewalls), then the public address. Every attempt gets fresh
+        // headers, because a signature is accepted only once.
+        for ($round = 0; $round < 2; $round++) {
+            if ($round > 0) {
+                sleep(1);
+            }
 
-            if ($headers !== null) {
-                $this->send($target, $headers, false);
+            foreach ([true, false] as $local) {
+                $headers = $this->signer->headers();
+
+                if ($headers === null) {
+                    return false;
+                }
+
+                if ($this->send($target, $headers, $local)) {
+                    return true;
+                }
             }
         }
+
+        return false;
     }
 
     /**

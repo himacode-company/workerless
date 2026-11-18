@@ -95,15 +95,33 @@ class WorkerlessServiceProvider extends ServiceProvider
         }
 
         if ($this->app->runningInConsole()) {
-            // Right after `composer require`: show the developer what to fill in .env.
+            // Right after `composer require`: show the developer what to fill in
+            // .env, and put config/workerless.php in the app, ready to edit.
             if (in_array('package:discover', (array) ($_SERVER['argv'] ?? []), true)) {
                 (new EnvWriter($this->app->basePath()))->addMissingKeys();
+                $this->publishConfigIfMissing();
             }
 
             $this->publishes([
                 __DIR__ . '/../config/workerless.php' => $this->app->configPath('workerless.php'),
             ], 'workerless-config');
         }
+    }
+
+    /**
+     * Copies the config file into the app's config folder on install, so it
+     * can be edited right away. An existing file is never overwritten.
+     */
+    protected function publishConfigIfMissing(): void
+    {
+        $target = $this->app->configPath('workerless.php');
+        $folder = dirname($target);
+
+        if (is_file($target) || ! is_dir($folder) || ! is_writable($folder)) {
+            return;
+        }
+
+        @copy(__DIR__ . '/../config/workerless.php', $target);
     }
 
     /**

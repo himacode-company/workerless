@@ -38,7 +38,7 @@ class HealthCheck
 
         $checks[] = $this->config->get('workerless.enabled', true)
             ? $this->ok('Runner enabled', 'Jobs run right after responses.')
-            : $this->warn('Runner disabled', 'WORKERLESS_ENABLED=false: jobs are stored but never run.');
+            : $this->ok('Monitoring mode', 'Workerless does not run jobs here: your own queue:work does. Workerless records them and shows them in this dashboard.');
 
         $checks[] = $this->accessCheck();
 
@@ -150,6 +150,10 @@ class HealthCheck
     /** @return array{level: string, title: string, detail: string} */
     protected function loopbackCheck(): array
     {
+        if (! $this->config->get('workerless.enabled', true)) {
+            return $this->ok('Self-calls not needed', 'In monitoring mode your own queue:work runs delayed jobs and retries.');
+        }
+
         if (! $this->config->get('workerless.loopback.enabled', true)) {
             return $this->warn('Self-calls disabled', 'Delayed jobs and retries wait for visitors.');
         }

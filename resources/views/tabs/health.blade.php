@@ -15,6 +15,7 @@
     $v = $diagnostic === null ? null : $verdicts[$diagnostic['verdict']];
 @endphp
 
+@if (! $monitoring)
 <section class="card compat compat--{{ $diagnostic['verdict'] ?? 'none' }}">
     <div class="card-head">
         <div>
@@ -79,6 +80,7 @@
         </ul>
     @endif
 </section>
+@endif
 
 <div class="section-head">
     <div class="chips">

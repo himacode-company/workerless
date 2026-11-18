@@ -22,7 +22,9 @@
             <h2 class="hero-title">{{ $overall[1] }}</h2>
             <p class="hero-text">{{ $overall[2] }}</p>
             <div class="hero-actions">
-                @if ($diagnostic === null)
+                @if ($monitoring)
+                    {{-- Monitoring mode: no hosting check needed. --}}
+                @elseif ($diagnostic === null)
                     <form method="POST" action="{{ route('workerless.diagnostics.run') }}">
                         @csrf
                         <button type="submit" class="btn btn-primary btn-sm">@include('workerless::partials.icon', ['name' => 'health']) Check this hosting</button>

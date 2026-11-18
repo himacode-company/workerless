@@ -11,7 +11,7 @@
         <div>
             <h2 class="hero-title">{{ $title }}</h2>
             <p class="hero-text">{{ $overall[2] }}</p>
-            @if ($diagnostic === null)
+            @if ($diagnostic === null && ! $monitoring)
                 <div class="hero-actions">
                     <form method="POST" action="{{ route('workerless.diagnostics.run') }}">
                         @csrf

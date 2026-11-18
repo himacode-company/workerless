@@ -193,7 +193,10 @@ class DashboardController
             'retry_after' => $metrics->retryAfter() . ' s',
             'Per run' => config('workerless.runner.max_jobs') . ' jobs / ' . config('workerless.runner.max_seconds') . ' s',
             'Cooldown' => config('workerless.runner.cooldown') . ' s',
-            'Self-call wait' => config('workerless.loopback.enabled', true) ? 'up to ' . config('workerless.loopback.max_wait') . ' s' : 'disabled',
+            'Mode' => config('workerless.enabled', true) ? 'Runs jobs' : 'Monitoring',
+            'Self-calls' => config('workerless.loopback.enabled', true)
+                ? 'wait ' . config('workerless.loopback.max_wait', 30) . ' s, look ahead ' . config('workerless.loopback.horizon', 300) . ' s'
+                : 'disabled',
             'History kept' => config('workerless.history.keep_days') . ' days',
         ];
     }

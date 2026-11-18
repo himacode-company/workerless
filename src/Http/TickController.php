@@ -73,17 +73,23 @@ class TickController
 
         try {
             $wait = $runner->secondsUntilReady();
+            $maxWait = $runner->maxWait();
 
-            if ($wait <= $runner->maxWait()) {
+            if ($wait <= $runner->horizon()) {
+                // Wait for the next job, but never longer than max_wait in one request.
+                $sleep = min($wait, max(0, $maxWait));
+
                 if (function_exists('set_time_limit')) {
-                    @set_time_limit($wait + 60);
+                    @set_time_limit($sleep + 120);
                 }
 
-                if ($wait > 0) {
-                    sleep($wait);
+                if ($sleep > 0) {
+                    sleep($sleep);
                 }
 
-                $chain = $runner->run();
+                // Still too early: hop. A fresh self-call continues the wait,
+                // so no single request holds a PHP process for long.
+                $chain = $wait > $maxWait ? true : $runner->run();
             }
         } finally {
             $state->unlock($lock);

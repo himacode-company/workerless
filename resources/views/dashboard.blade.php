@@ -32,7 +32,10 @@
         return null;
     };
 
-    $verdict = $diagnostic['verdict'] ?? null;
+    // Monitoring mode (VPS): your own queue:work runs the jobs, Workerless only shows them.
+    $monitoring = ! config('workerless.enabled', true);
+
+    $verdict = $monitoring ? null : ($diagnostic['verdict'] ?? null);
     $failed24 = (int) ($summary['failed_24h'] ?? 0);
 
     $overall = match (true) {
@@ -43,6 +46,7 @@
         $health === 'warn' => ['warn', 'Needs attention', $firstIssue('warn')],
         $failed24 > 0 => ['warn', 'Needs attention', $failed24 . ' ' . ($failed24 === 1 ? 'job' : 'jobs') . ' failed in the last 24 hours. See the Failed tab.'],
         ($summary['running'] ?? 0) > 0 => ['live', 'Processing', 'Jobs are running right now, right after a response.'],
+        $monitoring => ['ok', 'All systems operational', 'Monitoring mode: your queue:work runs the jobs, Workerless keeps an eye on them.'],
         default => ['ok', 'All systems operational', 'Jobs run right after each response. No cron, no worker.'],
     };
 

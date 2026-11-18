@@ -4,7 +4,7 @@
 
 <h1 align="center">Workerless</h1>
 
-<p align="center"><strong>Laravel queues without cron, SSH or <code>queue:work</code>.</strong><br>Built for shared hosting.</p>
+<p align="center"><strong>Laravel queues that just work.</strong><br>No cron, no SSH, no <code>queue:work</code> to keep alive.</p>
 
 <p align="center">
     <a href="https://packagist.org/packages/himacode-company/workerless"><img src="https://img.shields.io/packagist/v/himacode-company/workerless.svg?style=flat-square&color=FF5A36" alt="Latest version"></a>
@@ -14,20 +14,30 @@
 
 ---
 
-On shared hosting you usually cannot keep `php artisan queue:work` running, and often you have no SSH and no cron either. So emails, notifications and webhooks end up running while the visitor waits.
+Laravel queues need a worker: `php artisan queue:work`, running all the time. On shared hosting you usually cannot keep one alive, so you end up with a cron entry, the right PHP binary path, the right PHP version for the CLI, and a silent failure the day one of them is wrong.
 
-**Workerless is a queue driver that needs none of that.** Your jobs are stored in the normal `jobs` table and run **right after the response is sent**, so visitors never wait.
+**Workerless removes all of that.** Your jobs are stored in the normal `jobs` table and run **right after the response is sent**, inside the same PHP that serves your site. Visitors never wait, and there is nothing to keep alive.
+
+## Who is it for
+
+| You are on | What Workerless gives you |
+| --- | --- |
+| **Shared hosting** (Hostinger, cPanel, Plesk...) | Real queues with no cron, no SSH, no supervisor. `composer require` and one line in `.env`. |
+| **Your own machine** | No terminal running `queue:work`, and no stale worker running old code: every job runs with your latest code. |
+| **A VPS** | Keep your own `queue:work` and use Workerless as a **lightweight Horizon for the database queue**: history, failed jobs with retry, throughput, health. |
 
 ## Features
 
-- **Zero setup.** `composer require` and one line in `.env`. No cron, no SSH, no supervisor, no hPanel or cPanel step.
+- **Zero setup.** `composer require` and `QUEUE_CONNECTION=workerless`. No cron, no SSH, no hPanel or cPanel step.
+- **Same PHP as your site.** No CLI PHP binary to find, no version mismatch between your site and your cron.
 - **Real Laravel queues.** Built on Laravel's own `DatabaseQueue` and Worker: `$tries`, `$backoff`, `delay()`, `failed_jobs`, `queue:retry` and queue events all keep working.
-- **Visitors never wait.** The response is finished first, then jobs run in the same PHP process.
-- **Delays and retries without visitors.** A signed self-call keeps them moving.
+- **Visitors never wait.** The response is finished first, then jobs run.
+- **Delays and retries without visitors.** A chain of signed self-calls keeps them moving, and survives a crashing job.
+- **Clean jobs.** Each job starts from a clean state, like `queue:work`: no visitor login, request or locale leaks into it.
 - **Hosting check built in.** One click tells you if your hosting is *Compatible*, *Works with limits* or *Not compatible*, and why.
-- **Dashboard.** Status, failed jobs with retry, history, health checks. Simple and Advanced modes, light and dark.
-- **No tables to create.** Workerless creates them for you.
-- **Secure by default.** No shell commands, signed one-time self-calls, a dashboard that returns 404 to anyone not allowed.
+- **Dashboard.** Simple mode (is everything fine?) and Advanced mode (chart, jobs, failed jobs, history, health). Light and dark.
+- **No tables to create.** Workerless creates them, and ships a migration so `migrate:fresh` keeps working.
+- **Secure by default.** No shell commands ever, signed one-time self-calls, a dashboard that returns 404 to anyone not allowed.
 - **No lock-in.** Outgrow shared hosting? Run `php artisan queue:work` on the same `jobs` table. Nothing else changes.
 
 ## Installation
@@ -38,13 +48,21 @@ On shared hosting you usually cannot keep `php artisan queue:work` running, and 
 composer require himacode-company/workerless
 ```
 
+This also:
+
+- copies the config file to **`config/workerless.php`** in your app, ready to edit (an existing file is never overwritten),
+- adds `WORKERLESS_USER_IDS=` to your `.env` and a hint above `QUEUE_CONNECTION`.
+
 **2. Use it** in `.env`
 
 ```env
 QUEUE_CONNECTION=workerless
+WORKERLESS_USER_IDS=1
 ```
 
-**3. Check your hosting.** Upload your app, open `/workerless` and press **Check this hosting**. In about 5 seconds you know if Workerless fully works there.
+`WORKERLESS_USER_IDS` lists the ids (from your `users` table) of the people allowed to open the dashboard in production.
+
+**3. Check your hosting.** Upload your app, log in, open `/workerless` and press **Check this hosting**. In about 5 seconds you know if Workerless fully works there.
 
 That's it. Dispatch jobs as usual:
 
@@ -58,24 +76,26 @@ SendReminder::dispatch($user)->delay(now()->addMinutes(10));
 1. A job is dispatched and stored in the `jobs` table.
 2. The current response is sent to the visitor (`litespeed_finish_request`, `fastcgi_finish_request`, or a closed connection on Apache mod_php).
 3. Right after, in the same PHP process, Workerless runs the due jobs with Laravel's Worker, within time and job limits, one run at a time.
-4. If a job is due soon (a delay or a retry), Workerless sends a signed request to itself, which waits and runs it, even if nobody visits the site.
+4. If more work is due soon (a big batch, a delay, a retry), Workerless sends a signed request to itself, which waits and runs it, then passes the baton to the next one, even if nobody visits the site.
+
+Only one run happens at a time. When many visitors arrive together, the others skip running jobs and finish immediately, so Workerless uses **at most one or two PHP processes** of your hosting, however busy your site is.
+
+A batch of 100 emails is 100 jobs: Workerless runs them 10 at a time, back to back, until the queue is empty. Follow it live in the dashboard.
 
 ## Dashboard
 
 Open `/workerless`.
 
-- **Simple mode:** is everything working, how many jobs are waiting, done and failed, and the failed jobs with Retry and Delete.
-- **Advanced mode:** throughput chart, all jobs, failed jobs, history, health checks and server details.
+- **Simple mode** (default): is everything working, how many jobs are waiting, done and failed, and the failed jobs with Retry and Delete.
+- **Advanced mode:** throughput chart, all jobs, failed jobs, history, health checks, hosting check and server details.
 
-It opens without login only in the `local` environment and only from the same machine (`127.0.0.1`). In production, list the ids (from your `users` table) of the people allowed to open it. The empty key is added to your `.env` when you install the package:
+### Who can open it
 
-```env
-WORKERLESS_USER_IDS=1,7
-```
-
-They must be logged in to your app. Everyone else gets a **404**, so nobody can tell the dashboard exists.
-
-Need a custom rule (roles, permissions)? Define a `viewWorkerless` gate, for example in `AppServiceProvider::boot()`:
+| Who | How |
+| --- | --- |
+| Specific users | `WORKERLESS_USER_IDS=1,7` in `.env`. They must be logged in to your app. |
+| Your own rule | A `viewWorkerless` gate, e.g. in `AppServiceProvider::boot()`: |
+| You, while developing | The `local` environment, from the same machine (`127.0.0.1`) only. |
 
 ```php
 use Illuminate\Support\Facades\Gate;
@@ -83,44 +103,86 @@ use Illuminate\Support\Facades\Gate;
 Gate::define('viewWorkerless', fn ($user) => $user->is_admin);
 ```
 
+Everyone else gets a **404**, so nobody can tell the dashboard exists. A site uploaded with `APP_ENV=local` by mistake stays protected.
+
 ## Configuration
 
-Everything works out of the box. These `.env` keys are optional:
+Everything works out of the box. To change something, either:
 
-| Key | Default | What it does |
+- set a key in **`.env`** (best: each server can have its own value), or
+- edit **`config/workerless.php`** in your app. Every option is explained right there.
+
+If your server ran `php artisan config:cache`, run `php artisan config:clear` after changing `.env`.
+
+| `.env` key | Default | What it does |
 | --- | --- | --- |
+| `WORKERLESS_ENABLED` | `true` | `false` = monitoring mode (for a VPS, see below) |
 | `WORKERLESS_USER_IDS` | empty | User ids allowed to open the dashboard |
-| `WORKERLESS_ENABLED` | `true` | Turn job running off (jobs stay stored) |
 | `WORKERLESS_MAX_JOBS` | `10` | Jobs per run |
 | `WORKERLESS_MAX_SECONDS` | `30` | Stop taking new jobs after this many seconds |
 | `WORKERLESS_COOLDOWN` | `5` | Seconds between two runs |
 | `WORKERLESS_QUEUES` | connection queue | Queues to run, by priority, e.g. `high,default` |
-| `WORKERLESS_LOOPBACK` | `true` | Signed self-calls for delays and retries |
+| `WORKERLESS_LOOPBACK` | `true` | Self-calls for delays and retries without visitors |
 | `WORKERLESS_URL` | `APP_URL` | Address used for self-calls |
-| `WORKERLESS_MAX_WAIT` | `30` | Longest a self-call waits for the next job (seconds) |
+| `WORKERLESS_MAX_WAIT` | `30` | Longest one self-call waits for the next job (seconds) |
+| `WORKERLESS_HORIZON` | `300` | How far ahead the self-call chain stays alive (seconds) |
 | `WORKERLESS_VERIFY_SSL` | `true` | Keep `true` in production |
 | `WORKERLESS_DASHBOARD` | `true` | Turn the dashboard off |
 | `WORKERLESS_PATH` | `workerless` | Dashboard URL |
 | `WORKERLESS_KEEP_DAYS` | `7` | Days of job history to keep |
 
-To edit the config file itself:
+**Common recipes**
+
+```env
+# Empty big batches (hundreds of emails) faster
+WORKERLESS_MAX_JOBS=20
+WORKERLESS_MAX_SECONDS=45
+WORKERLESS_COOLDOWN=2
+
+# Run urgent jobs first
+WORKERLESS_QUEUES=high,default
+
+# Dashboard at /admin/queue
+WORKERLESS_PATH=admin/queue
+```
+
+**After upgrading Workerless**, new options already work with their defaults. To see them in your config file, publish it again (this replaces your copy, so note your changes first):
 
 ```bash
-php artisan vendor:publish --tag=workerless-config
+php artisan vendor:publish --tag=workerless-config --force
 ```
+
+## On a VPS: a lightweight Horizon
+
+Have a real worker? Keep it, and let Workerless watch it. Horizon needs Redis; Workerless works with the **database queue**.
+
+```env
+QUEUE_CONNECTION=workerless
+WORKERLESS_ENABLED=false
+```
+
+Run your worker as usual (Supervisor, systemd...):
+
+```bash
+php artisan queue:work
+```
+
+Workerless then runs nothing itself. Your worker runs the jobs, and the dashboard shows them: history, failed jobs with retry, throughput and health.
 
 ## When to use it, and when not
 
-**Great for** small and medium apps on shared hosting: emails, notifications, webhooks, image resizing, short API calls.
+**Great for** small and medium apps on shared hosting: emails, notifications, certificates and PDFs, webhooks, image resizing, short API calls.
 
 **Not for:**
 
-- **High volume.** Up to 10 jobs per run, one run at a time. Thousands of jobs per hour need a real worker.
+- **High volume.** Up to `WORKERLESS_MAX_JOBS` jobs per run, one run at a time. Thousands of jobs per hour need a real worker.
 - **Long jobs.** A job must finish within `retry_after` (90 s by default). Video processing or huge exports need a real worker.
-- **Exact timing with no traffic.** A job delayed by more than 30 s runs at the first visit after its time.
+- **Exact timing with no traffic.** Work due within 5 minutes runs on time. A job delayed by hours runs at the first visit after its time.
 - **Several servers** behind a load balancer, or Laravel Octane.
 
-Each run uses one PHP process of your hosting for a few seconds, so very busy sites may hit their hosting's process limit.
+Each run uses one PHP process of your hosting, so during a heavy batch (PDFs, images) one CPU core is busy. A cron-driven `queue:work` costs the same.
+
+**Tip:** dispatch one job per email or per item, never one job that loops over hundreds. Small jobs are retried one by one; a giant job that times out starts over from the beginning.
 
 ## Tables
 
@@ -128,9 +190,11 @@ Workerless creates `jobs`, `failed_jobs` and `workerless_runs` by itself, and al
 
 ## FAQ
 
-**Can I still use `queue:work`?** Yes. Workerless uses the standard `jobs` table, so a real worker can process the same jobs at any time.
+**Can I still use `queue:work`?** Yes. Workerless uses the standard `jobs` table, so a real worker can process the same jobs at any time. On a VPS, use monitoring mode.
 
-**Does it work behind Cloudflare?** Yes. Self-calls go to `127.0.0.1` first, so they usually never leave the server. If they are blocked, the hosting check tells you.
+**What if a job crashes the PHP process?** The run releases its lock and passes the baton to the next self-call before PHP exits, so the rest of the queue keeps moving.
+
+**Does it work behind Cloudflare?** Usually yes: self-calls go to `127.0.0.1` first, so they never leave the server. If they are blocked, the hosting check tells you.
 
 **What if my hosting is not compatible?** The hosting check says so, and why, before you rely on it. Your jobs stay safely in the `jobs` table.
 
@@ -156,29 +220,29 @@ MIT. See [LICENSE](LICENSE).
 
 ## بالعربية
 
-**Queue في Laravel بلا Cron ولا SSH ولا `queue:work`**، مصمَّمة للاستضافة المشتركة.
+**Queue في Laravel تعمل وحدها:** بلا Cron، ولا SSH، ولا `queue:work` تحتاج أن تبقيه شغّالًا.
 
-على الاستضافة المشتركة لا تستطيع غالبًا تشغيل `queue:work` بشكل دائم، وكثيرًا لا يوجد SSH ولا Cron. Workerless تحفظ الـ Jobs في جدول `jobs` المعتاد، وتنفّذها مباشرة بعد إرسال الصفحة للزائر، فلا ينتظر أحد.
+على الاستضافة المشتركة تحتاج عادة إلى Cron، ومسار PHP الصحيح، وإصدار PHP الصحيح لسطر الأوامر، ثم يفشل كل شيء بصمت يوم يخطئ واحد منها. Workerless تحفظ الـ Jobs في جدول `jobs` المعتاد، وتنفّذها مباشرة **بعد إرسال الصفحة للزائر**، داخل نفس PHP الذي يشغّل موقعك. فلا ينتظر أحد، ولا شيء تحتاج أن تبقيه شغّالًا.
+
+### لمن هي؟
+
+- **الاستضافة المشتركة:** Queue حقيقي بلا Cron ولا SSH.
+- **جهازك أثناء التطوير:** لا نافذة Terminal مفتوحة لـ `queue:work`، وكل Job يعمل بآخر نسخة من الكود.
+- **VPS:** أبقِ `queue:work` الخاص بك، واستخدم Workerless كـ **Horizon خفيف** لطابور قاعدة البيانات، عبر `WORKERLESS_ENABLED=false`.
 
 ### التثبيت
 
-1. `composer require himacode-company/workerless`
-2. في ملف `.env`: `QUEUE_CONNECTION=workerless`
-3. ارفع تطبيقك، وافتح `/workerless`، واضغط **Check this hosting**. خلال 5 ثوانٍ تعرف هل تعمل Workerless على استضافتك بالكامل.
+1. `composer require himacode-company/workerless`، وسيظهر ملف الإعدادات `config/workerless.php` في تطبيقك تلقائيًا، مع شرح لكل خيار.
+2. في `.env`: `QUEUE_CONNECTION=workerless` و`WORKERLESS_USER_IDS=1` (أرقام المستخدمين المسموح لهم بفتح اللوحة).
+3. ارفع تطبيقك، وسجّل الدخول، وافتح `/workerless`، واضغط **Check this hosting**. خلال 5 ثوانٍ تعرف هل تعمل Workerless على استضافتك بالكامل.
 
-### لوحة التحكم
+### تعديل الإعدادات
 
-في الـ production، اكتب أرقام المستخدمين (من جدول `users`) المسموح لهم بفتح اللوحة:
-
-```env
-WORKERLESS_USER_IDS=1,7
-```
-
-أي شخص آخر يرى صفحة 404.
+عدّل القيم من ملف `.env` (الأفضل)، أو من `config/workerless.php` في تطبيقك. كل خيار مشروح داخل الملف نفسه، وكل المفاتيح في جدول **Configuration** أعلاه.
 
 ### مناسبة لـ
 
-المواقع الصغيرة والمتوسطة: الإيميلات، الإشعارات، الـ Webhooks، المهام القصيرة. وليست للكميات الضخمة أو الأعمال الطويلة جدًا. وإذا كبر تطبيقك، شغّل `queue:work` على الجدول نفسه دون أي تغيير.
+الإيميلات، والإشعارات، والشهادات وملفات PDF، والـ Webhooks، والمهام القصيرة. وليست للكميات الضخمة جدًا أو الأعمال الطويلة جدًا. وإذا كبر تطبيقك، شغّل `queue:work` على الجدول نفسه دون أي تغيير.
 
 </div>
 
