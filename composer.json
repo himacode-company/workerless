@@ -1,0 +1,54 @@
+{
+    "name": "himacode-company/workerless",
+    "description": "A Laravel queue driver that runs your jobs without cron, SSH or queue:work. Built for shared hosting.",
+    "keywords": [
+        "laravel",
+        "queue",
+        "jobs",
+        "background-jobs",
+        "worker",
+        "no-cron",
+        "shared-hosting",
+        "hostinger",
+        "cpanel",
+        "litespeed"
+    ],
+    "license": "MIT",
+    "type": "library",
+    "homepage": "https://github.com/himacode-company/workerless",
+    "authors": [
+        {
+            "name": "HimaCode",
+            "homepage": "https://github.com/himacode-company"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/himacode-company/workerless/issues",
+        "source": "https://github.com/himacode-company/workerless",
+        "security": "https://github.com/himacode-company/workerless/security/policy"
+    },
+    "require": {
+        "php": "^8.2",
+        "illuminate/contracts": "^10.0|^11.0|^12.0|^13.0",
+        "illuminate/database": "^10.0|^11.0|^12.0|^13.0",
+        "illuminate/queue": "^10.0|^11.0|^12.0|^13.0",
+        "illuminate/support": "^10.0|^11.0|^12.0|^13.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "HimaCode\\Workerless\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "HimaCode\\Workerless\\WorkerlessServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
