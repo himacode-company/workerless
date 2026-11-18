@@ -1,0 +1,11 @@
+* text=auto eol=lf
+*.png binary
+
+# Not shipped to users who install the package with composer
+/.github            export-ignore
+/art                export-ignore
+/tests              export-ignore
+/.editorconfig      export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+/phpunit.xml.dist   export-ignore
